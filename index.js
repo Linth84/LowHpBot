@@ -179,18 +179,13 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-const app = express();
-
-app.get("/", (_req, res) => {
-  res.status(200).send("LowHP Bot alive ❤️‍🩹");
+process.on("unhandledRejection", (err) => {
+  console.error("UnhandledRejection:", err);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🌐 Web server activo en puerto ${PORT}`);
+process.on("uncaughtException", (err) => {
+  console.error("UncaughtException:", err);
 });
-
-process.on("unhandledRejection", (err) => console.error("UnhandledRejection:", err));
 
 client.once("clientReady", () => {
   console.log(`❤️‍🩹 LowHP Bot conectado como ${client.user.tag} | PID ${process.pid}`);
