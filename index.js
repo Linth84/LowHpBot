@@ -1972,6 +1972,9 @@ client.on("messageCreate", async (message) => {
 /* =========================================================
    START
 ========================================================= */
+/* =========================================================
+   START
+========================================================= */
 loadBlocklist();
 
 console.log("✅ ENV CHECK", {
@@ -1990,9 +1993,48 @@ if (!process.env.DISCORD_TOKEN) {
   process.exit(1);
 }
 
-client.login(process.env.DISCORD_TOKEN)
-  .then(() => console.log("✅ Login a Discord iniciado"))
-  .catch((err) => {
+client.on("debug", (msg) => {
+  console.log("🐛 DEBUG:", msg);
+});
+
+client.on("warn", (msg) => {
+  console.warn("⚠️ WARN:", msg);
+});
+
+client.on("error", (err) => {
+  console.error("❌ CLIENT ERROR:", err);
+});
+
+client.on("shardError", (err) => {
+  console.error("❌ SHARD ERROR:", err);
+});
+
+client.on("shardDisconnect", (event, id) => {
+  console.error(`❌ SHARD DISCONNECT | shard ${id} | code ${event.code} | reason: ${event.reason}`);
+});
+
+client.on("shardReconnecting", (id) => {
+  console.warn(`🔄 SHARD RECONNECTING | shard ${id}`);
+});
+
+client.on("shardReady", (id) => {
+  console.log(`✅ SHARD READY | shard ${id}`);
+});
+
+(async () => {
+  try {
+    console.log("🚀 Intentando login a Discord...");
+    const result = await client.login(process.env.DISCORD_TOKEN);
+    console.log("✅ client.login resolvió correctamente");
+    console.log("🔑 Token devuelto:", result ? "sí" : "no");
+  } catch (err) {
     console.error("❌ ERROR LOGIN DISCORD:", err);
     process.exit(1);
-  });
+  }
+})();
+
+setTimeout(() => {
+  if (!client.isReady()) {
+    console.error("⏰ TIMEOUT: client.login no llegó a ready después de 20 segundos");
+  }
+}, 20000);
