@@ -18,37 +18,6 @@ import express from "express";
 /* =========================================================
    SINGLE INSTANCE LOCK
 ========================================================= */
-// BORRAR todo el bloque del lock file
-
-process.on("uncaughtException", (err) => {
-  console.error("UncaughtException:", err);
-});
-
-process.on("unhandledRejection", (err) => {
-  console.error("UnhandledRejection:", err);
-});
-
-client.on("error", (err) => {
-  console.error("Discord client error:", err);
-});
-
-console.log("✅ ENV CHECK", {
-  hasToken: !!process.env.DISCORD_TOKEN,
-  hasClientId: !!process.env.CLIENT_ID,
-  hasGuildId: !!process.env.GUILD_ID,
-  hasHomeGuildId: !!process.env.HOME_GUILD_ID,
-  hasVentEs: !!process.env.VENTS_CHANNEL_ID_ES,
-  hasVentEn: !!process.env.VENTS_CHANNEL_ID_EN,
-  hasModlog: !!process.env.MODLOG_CHANNEL_ID,
-  port: process.env.PORT,
-});
-
-client.login(process.env.DISCORD_TOKEN)
-  .then(() => console.log("✅ Login a Discord iniciado"))
-  .catch((err) => {
-    console.error("❌ ERROR LOGIN DISCORD:", err);
-    process.exit(1);
-  });
 
 /* =========================================================
    CONFIG (.env)
@@ -239,7 +208,7 @@ async function shutdown(signal) {
 
   const forceTimer = setTimeout(() => {
     console.log("🧯 Force exit (timeout).");
-    cleanupLock();
+    
     process.exit(0);
   }, 3000);
 
@@ -250,7 +219,7 @@ async function shutdown(signal) {
     ]);
   } finally {
     clearTimeout(forceTimer);
-    cleanupLock();
+    
     process.exit(0);
   }
 }
@@ -1817,8 +1786,8 @@ if (interaction.isModalSubmit()) {
       [buildModVentContentRow(ventId), buildModUserRow(vent.authorId), buildModUserRow2(vent.authorId)]
     );
 
-    if (count >= REPORT_THRESHOLD) {
-      await hideVentForReview(ventId, `umbral de denuncias (${count})`);
+    if (count >= REPORT_THRESHOLD && !vent.hidden) {
+      await hideVentForReview(ventId, "threshold reportes");
     }
 
     return;
@@ -1837,7 +1806,6 @@ if (interaction.isModalSubmit()) {
       if (ok) await safeEdit(interaction, t(lang, "❤️‍🩹 Esa respuesta ya no está disponible.", "❤️‍🩹 That reply is no longer available."));
       return;
     }
-
     if (interaction.user.id !== r.authorId) {
       if (ok) await safeEdit(interaction, t(lang, "❤️‍🩹 Este botón no es para vos.", "❤️‍🩹 This button isn't for you."));
       return;
@@ -1999,8 +1967,32 @@ client.on("messageCreate", async (message) => {
     processingVent.delete(userId);
   }
 });
+
+
 /* =========================================================
    START
 ========================================================= */
 loadBlocklist();
-client.login(process.env.DISCORD_TOKEN);
+
+console.log("✅ ENV CHECK", {
+  hasToken: !!process.env.DISCORD_TOKEN,
+  hasClientId: !!process.env.CLIENT_ID,
+  hasGuildId: !!process.env.GUILD_ID,
+  hasHomeGuildId: !!process.env.HOME_GUILD_ID,
+  hasVentEs: !!process.env.VENTS_CHANNEL_ID_ES,
+  hasVentEn: !!process.env.VENTS_CHANNEL_ID_EN,
+  hasModlog: !!process.env.MODLOG_CHANNEL_ID,
+  port: process.env.PORT,
+});
+
+if (!process.env.DISCORD_TOKEN) {
+  console.error("❌ Falta DISCORD_TOKEN en .env / Render env vars");
+  process.exit(1);
+}
+
+client.login(process.env.DISCORD_TOKEN)
+  .then(() => console.log("✅ Login a Discord iniciado"))
+  .catch((err) => {
+    console.error("❌ ERROR LOGIN DISCORD:", err);
+    process.exit(1);
+  });
