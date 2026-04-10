@@ -14,7 +14,7 @@ import {
 } from "discord.js";
 import "dotenv/config";
 import fs from "node:fs";
-
+import express from "express";
 /* =========================================================
    SINGLE INSTANCE LOCK
 ========================================================= */
@@ -33,13 +33,20 @@ process.on("exit", cleanupLock);
 /* =========================================================
    CONFIG (.env)
 ========================================================= */
+/* =========================================================
+   CONFIG (.env)
+========================================================= */
 const VENTS_CHANNEL_ID_ES = process.env.VENTS_CHANNEL_ID_ES;
 const VENTS_CHANNEL_ID_EN = process.env.VENTS_CHANNEL_ID_EN;
+const VENT_SOFT_MIN_LEN = Number(process.env.VENT_SOFT_MIN_LEN ?? 50);
 const MODLOG_CHANNEL_ID = process.env.MODLOG_CHANNEL_ID;
 const HOME_GUILD_ID = process.env.HOME_GUILD_ID || process.env.GUILD_ID;
 
 const REPORT_THRESHOLD = Number(process.env.REPORT_THRESHOLD ?? 3);
+const REPLY_MIN_LEN = Number(process.env.REPLY_MIN_LEN ?? 5);
+const REPLY_SOFT_MIN_LEN = Number(process.env.REPLY_SOFT_MIN_LEN ?? 20);
 const VENT_MAX_LEN = Number(process.env.VENT_MAX_LEN ?? 200);
+const VENT_MIN_LEN = Number(process.env.VENT_MIN_LEN ?? 10);
 
 const AUTO_HIDE_ON_TRIGGERS =
   String(process.env.AUTO_HIDE_ON_TRIGGERS ?? "true").toLowerCase() === "true";
@@ -181,6 +188,17 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
   partials: [Partials.Channel],
+});
+
+const app = express();
+
+app.get("/", (_req, res) => {
+  res.status(200).send("LowHP Bot alive ❤️‍🩹");
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🌐 Web server activo en puerto ${PORT}`);
 });
 
 process.on("unhandledRejection", (err) => console.error("UnhandledRejection:", err));
@@ -1530,8 +1548,11 @@ if (id === "exit") {
     return;
   }
 
- /* ---------- MODAL SUBMIT ---------- */
+
+/* ---------- MODAL SUBMIT ---------- */
 if (interaction.isModalSubmit()) {
+
+  /* ===== RESPONDER VENT ===== */
   if (interaction.customId.startsWith("replymodal:")) {
     const ventId = interaction.customId.split(":")[1];
     const vent = vents.get(ventId);
@@ -1563,13 +1584,48 @@ if (interaction.isModalSubmit()) {
     }
 
     const replyText = interaction.fields.getTextInputValue("text").trim();
+    const shouldSuggestMore = replyText.length < REPLY_SOFT_MIN_LEN;
+
     if (!replyText) {
-      if (ok) await safeEdit(interaction, t(lang, "❤️‍🩹 La respuesta está vacía.", "❤️‍🩹 Your reply is empty."));
+      if (ok) {
+        await safeEdit(
+          interaction,
+          t(
+            lang,
+            "❤️‍🩹 Tu respuesta quedó vacía.\n\nSi querés acompañar a esta persona, podés escribir unas palabras desde el corazón.",
+            "❤️‍🩹 Your reply is empty.\n\nIf you want to support this person, you can write a few words from the heart."
+          )
+        );
+      }
+      return;
+    }
+
+    if (replyText.length < REPLY_MIN_LEN) {
+      if (ok) {
+        await safeEdit(
+          interaction,
+          t(
+            lang,
+            "❤️‍🩹 Gracias por querer acompañar.\n\nSi te sale, escribí un poquito más. A veces unas palabras extra pueden hacer mucha diferencia.",
+            "❤️‍🩹 Thank you for wanting to support someone.\n\nIf you can, write a little more. Sometimes a few extra words can make a big difference."
+          )
+        );
+      }
       return;
     }
 
     if (containsContactRegex(replyText)) {
-      if (ok) await safeEdit(interaction, t(lang, "⛔ No se permiten datos de contacto. Reescribí sin eso.", "⛔ Contact details are not allowed. Rewrite it without them."));
+      if (ok) {
+        await safeEdit(
+          interaction,
+          t(
+            lang,
+            "❤️‍🩹 Para cuidar la privacidad de todos, no se permiten datos de contacto.\n\nSi querés, reescribí tu respuesta sin eso.",
+            "❤️‍🩹 To protect everyone's privacy, contact details are not allowed.\n\nIf you want, rewrite your reply without that."
+          )
+        );
+      }
+
       await logToModlog(
         "⛔ **Respuesta bloqueada por contacto (regex)**\n" +
           `**responder real:** <@${interaction.user.id}> (${interaction.user.id})\n` +
@@ -1598,7 +1654,7 @@ if (interaction.isModalSubmit()) {
     const riskLevel = riskMatch?.level ?? null;
     const hasContactTrigger = containsContactTriggers(replyText);
 
-      if (riskLevel || hasContactTrigger) {
+    if (riskLevel || hasContactTrigger) {
       const rep = ensureReport(replyReports, replyId);
       rep.autoFlagged = true;
 
@@ -1623,12 +1679,11 @@ if (interaction.isModalSubmit()) {
           replyId,
           ventId,
           replyText,
-reasonLine:
-  `**Risk level:** ${riskLevel ?? "none"}\n` +
-  `**Matched:** ${riskMatch?.matched ?? "none"}\n` +
-  `**Source:** ${riskMatch?.source ?? "none"}\n` +
-  `**Auto-hide:** no\n` +
-  `**Motivo:** trigger riesgo ${riskLevel}`,
+          reasonLine:
+            `**Risk level:** ${riskLevel ?? "none"}\n` +
+            `**Matched:** ${riskMatch?.matched ?? "none"}\n` +
+            `**Source:** ${riskMatch?.source ?? "none"}\n` +
+            `**Motivo:** trigger riesgo ${riskLevel}`,
         });
 
         if (ok) {
@@ -1636,8 +1691,8 @@ reasonLine:
             interaction,
             t(
               lang,
-              "🫥 Tu respuesta quedó en revisión por seguridad. Gracias ❤️‍🩹",
-              "🫥 Your reply was sent for review for safety reasons. Thank you ❤️‍🩹"
+              "❤️‍🩹 Gracias por querer acompañar.\n\nTu mensaje quedó en revisión por seguridad. Es solo para cuidar a todos.\n\nSi está todo bien, se va a enviar.",
+              "❤️‍🩹 Thank you for wanting to support someone.\n\nYour message is being reviewed for safety, just to keep everyone safe.\n\nIf everything is okay, it will be sent."
             )
           );
         }
@@ -1650,7 +1705,6 @@ reasonLine:
           replyText,
           reasonLine:
             `**Risk level:** ${riskLevel ?? "none"}\n` +
-            `**Auto-hide:** no\n` +
             `**Motivo:** trigger riesgo ${riskLevel}`,
         });
       }
@@ -1672,14 +1726,27 @@ reasonLine:
 
       vent.answered = true;
 
-      if (ok) await safeEdit(interaction, BOT_TEXT[lang].sentReply);
+      if (ok) {
+        const sentMsg = shouldSuggestMore
+          ? t(
+              lang,
+              "❤️‍🩹 Respuesta enviada. Gracias por estar.\n\nSi querés, podés mandar otra respuesta más desarrollada. A veces unas palabras más pueden ayudar mucho.",
+              "❤️‍🩹 Reply sent. Thank you for being here.\n\nIf you want, you can send another, more developed reply. Sometimes a few extra words can help a lot."
+            )
+          : BOT_TEXT[lang].sentReply;
+
+        await safeEdit(interaction, sentMsg);
+      }
+
     } catch (e) {
       console.error("❌ send reply DM failed:", e?.code, e?.message ?? e);
       if (ok) await safeEdit(interaction, t(lang, "😕 No pude entregar la respuesta (DMs cerrados).", "😕 I couldn't deliver the reply (DMs are closed)."));
     }
+
     return;
   }
 
+  /* ===== REPORT VENT ===== */
   if (interaction.customId.startsWith("flagmodal:")) {
     const ventId = interaction.customId.split(":")[1];
     const vent = vents.get(ventId);
@@ -1733,9 +1800,11 @@ reasonLine:
     if (count >= REPORT_THRESHOLD) {
       await hideVentForReview(ventId, `umbral de denuncias (${count})`);
     }
+
     return;
   }
 
+  /* ===== REPORT REPLY ===== */
   if (interaction.customId.startsWith("flagreplymodal:")) {
     const replyId = interaction.customId.split(":")[1];
     const r = replies.get(replyId);
@@ -1785,9 +1854,11 @@ reasonLine:
     if (count >= REPLY_REPORT_THRESHOLD) {
       r.hidden = true;
     }
-       return;
-    }
+
+    return;
   }
+
+}
 });
 
 /* =========================================================
@@ -1804,8 +1875,16 @@ client.on("messageCreate", async (message) => {
   if (b.blocked) {
     await message.channel.send(
       b.until === 0
-        ? t(lang, "❤️‍🩹 No podés usar LowHP Bot (bloqueo global de moderación).", "❤️‍🩹 You can't use LowHP Bot right now (global moderation block).")
-        : t(lang, `❤️‍🩹 No podés usar LowHP Bot hasta ${formatUntil(b.until)}.`, `❤️‍🩹 You can't use LowHP Bot until ${formatUntil(b.until)}.`)
+        ? t(
+            lang,
+            "❤️‍🩹 No podés usar LowHP Bot (bloqueo global de moderación).",
+            "❤️‍🩹 You can't use LowHP Bot right now (global moderation block)."
+          )
+        : t(
+            lang,
+            `❤️‍🩹 No podés usar LowHP Bot hasta ${formatUntil(b.until)}.`,
+            `❤️‍🩹 You can't use LowHP Bot until ${formatUntil(b.until)}.`
+          )
     ).catch(() => {});
     return;
   }
@@ -1816,13 +1895,27 @@ client.on("messageCreate", async (message) => {
   const texto = message.content.trim();
   if (!texto) return;
 
+  // 🚫 Muy corto
+  if (texto.length < VENT_MIN_LEN) {
+    pendingVents.set(userId, { categoria: state.categoria, lang: state.lang });
+    await message.channel.send(
+      t(
+        lang,
+        "❤️‍🩹 Gracias por compartir.\n\nSi te sale, podés contar un poquito más. A veces ayuda a que otros puedan entenderte mejor.",
+        "❤️‍🩹 Thanks for sharing.\n\nIf you feel like it, you can share a bit more. It can help others understand you better."
+      )
+    ).catch(() => {});
+    return;
+  }
+
+  // 🚫 Muy largo
   if (texto.length > VENT_MAX_LEN) {
     pendingVents.set(userId, { categoria: state.categoria, lang: state.lang });
     await message.channel.send(
       t(
         lang,
-        `❤️‍🩹 Tu vent tiene **${texto.length}** caracteres y el máximo es **${VENT_MAX_LEN}**.\nRecortalo y mandalo de nuevo (te pasaste por **${texto.length - VENT_MAX_LEN}**).`,
-        `❤️‍🩹 Your vent has **${texto.length}** characters and the maximum is **${VENT_MAX_LEN}**.\nShorten it and send it again (you went over by **${texto.length - VENT_MAX_LEN}**).`
+        `❤️‍🩹 Tu mensaje es bastante largo (**${texto.length}** caracteres).\n\nSi podés, intentá dividirlo en partes o resumirlo un poco. Lo importante es que puedas expresarte.`,
+        `❤️‍🩹 Your message is a bit long (**${texto.length}** characters).\n\nIf you can, try breaking it into parts or shortening it a bit. What matters is that you can express yourself.`
       )
     ).catch(() => {});
     return;
@@ -1838,13 +1931,11 @@ client.on("messageCreate", async (message) => {
       [buildModUserRow(userId), buildModUserRow2(userId)]
     );
 
-
-
     await message.channel.send(
       t(
         lang,
-        "⛔ No se permiten datos de contacto (Discord/IG/teléfono/mails/mentions/invites).\nReescribí tu vent sin eso y mandalo de nuevo ❤️‍🩹",
-        "⛔ Contact details are not allowed (Discord/IG/phone/emails/mentions/invites).\nRewrite your vent without them and send it again ❤️‍🩹"
+        "❤️‍🩹 Para cuidar tu privacidad y la de los demás, no se permiten datos de contacto.\n\nSi querés, reescribilo sin eso y mandalo de nuevo.",
+        "❤️‍🩹 To protect your privacy and everyone else’s, contact details are not allowed.\n\nIf you want, rewrite it without that and send it again."
       )
     ).catch(() => {});
     return;
@@ -1853,7 +1944,21 @@ client.on("messageCreate", async (message) => {
   processingVent.add(userId);
   pendingVents.delete(userId);
 
-  confirmVents.set(userId, { categoria: state.categoria, texto, lang: state.lang });
+  confirmVents.set(userId, {
+    categoria: state.categoria,
+    texto,
+    lang: state.lang,
+  });
+
+  let extraNote = "";
+
+  if (texto.length < 50) {
+    extraNote = t(
+      lang,
+      "\n\n❤️‍🩹 Gracias por compartir.\n\nSi te sale, podés contar un poquito más. A veces ayuda a que otros puedan entenderte mejor.",
+      "\n\n❤️‍🩹 Thank you for sharing.\n\nIf you can, you could share a bit more. Sometimes it helps others understand you better."
+    );
+  }
 
   try {
     await message.channel.send({
@@ -1864,7 +1969,8 @@ client.on("messageCreate", async (message) => {
           "❤️‍🩹 **Confirm your message**\n\n"
         ) +
         `${t(lang, "**Categoría:**", "**Category:**")} ${state.categoria}\n\n` +
-        `“${texto}”`,
+        `“${texto}”` +
+        extraNote,
       components: [buildConfirmRow(userId, lang)],
     });
   } catch (e) {
@@ -1873,7 +1979,6 @@ client.on("messageCreate", async (message) => {
     processingVent.delete(userId);
   }
 });
-
 /* =========================================================
    START
 ========================================================= */

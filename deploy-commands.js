@@ -5,11 +5,11 @@ const commands = [
   
   new SlashCommandBuilder()
     .setName("ventilar")
-    .setDescription("Hablar en privado con Respawn"),
+    .setDescription("Hablar en privado con LowHP Bot"),
 
   new SlashCommandBuilder()
     .setName("vent")
-    .setDescription("Talk privately with Respawn"),
+    .setDescription("Talk privately with LowHP Bot"),
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
