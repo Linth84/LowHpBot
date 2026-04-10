@@ -18,17 +18,37 @@ import express from "express";
 /* =========================================================
    SINGLE INSTANCE LOCK
 ========================================================= */
-const LOCK_FILE = "./lowhp bot.lock";
-try {
-  fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: "wx" });
-} catch {
-  console.error("❌ LowHP Bot ya está corriendo (lock detectado). Cerrá el otro proceso.");
-  process.exit(1);
-}
-function cleanupLock() {
-  try { fs.unlinkSync(LOCK_FILE); } catch {}
-}
-process.on("exit", cleanupLock);
+// BORRAR todo el bloque del lock file
+
+process.on("uncaughtException", (err) => {
+  console.error("UncaughtException:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("UnhandledRejection:", err);
+});
+
+client.on("error", (err) => {
+  console.error("Discord client error:", err);
+});
+
+console.log("✅ ENV CHECK", {
+  hasToken: !!process.env.DISCORD_TOKEN,
+  hasClientId: !!process.env.CLIENT_ID,
+  hasGuildId: !!process.env.GUILD_ID,
+  hasHomeGuildId: !!process.env.HOME_GUILD_ID,
+  hasVentEs: !!process.env.VENTS_CHANNEL_ID_ES,
+  hasVentEn: !!process.env.VENTS_CHANNEL_ID_EN,
+  hasModlog: !!process.env.MODLOG_CHANNEL_ID,
+  port: process.env.PORT,
+});
+
+client.login(process.env.DISCORD_TOKEN)
+  .then(() => console.log("✅ Login a Discord iniciado"))
+  .catch((err) => {
+    console.error("❌ ERROR LOGIN DISCORD:", err);
+    process.exit(1);
+  });
 
 /* =========================================================
    CONFIG (.env)
